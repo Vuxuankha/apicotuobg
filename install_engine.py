@@ -1,62 +1,45 @@
 #!/usr/bin/env python3
-"""Install matched official Pikafish Linux x86-64 engine and NNUE from GitHub release."""
-import io, json, os, pathlib, shutil, stat, tarfile, tempfile, urllib.request, zipfile
+"""Build native Pikafish from official release source on Linux x86-64.
+Downloads NNUE separately; fails loudly if an exact compatible net is unavailable.
+"""
+import json, os, pathlib, shutil, subprocess, tarfile, tempfile, urllib.request
 API = 'https://api.github.com/repos/official-pikafish/Pikafish/releases/latest'
-DEST = pathlib.Path('/opt/pikafish')
-HEADERS = {'User-Agent':'xiangqi-cloud-render-installer', 'Accept':'application/vnd.github+json'}
-def fetch(url):
-    req = urllib.request.Request(url, headers=HEADERS)
-    with urllib.request.urlopen(req, timeout=180) as response:
-        return response.read()
-def unpack(data, name, dest):
-    if zipfile.is_zipfile(io.BytesIO(data)):
-        with zipfile.ZipFile(io.BytesIO(data)) as z:
-            for item in z.infolist():
-                part=pathlib.PurePosixPath(item.filename)
-                if item.is_dir() or '..' in part.parts or part.is_absolute(): continue
-                out=dest.joinpath(*part.parts);out.parent.mkdir(parents=True, exist_ok=True)
-                out.write_bytes(z.read(item))
-    elif name.lower().endswith(('.tar.gz','.tgz','.tar.xz')):
-        with tarfile.open(fileobj=io.BytesIO(data),mode='r:*') as t:
-            for item in t.getmembers():
-                part=pathlib.PurePosixPath(item.name)
-                if not item.isfile() or '..' in part.parts or part.is_absolute():continue
-                out=dest.joinpath(*part.parts);out.parent.mkdir(parents=True,exist_ok=True)
-                f=t.extractfile(item)
-                if f:out.write_bytes(f.read())
-    else:
-        (dest/name).write_bytes(data)
-def engine_priority(p):
-    s=p.name.lower(); full=str(p).lower()
-    if s.endswith(('.exe','.dll','.so','.nnue','.txt','.md','.json')) or not s.startswith('pikafish'):return -1
-    if 'windows' in full or 'android' in full or 'macos' in full:return -1
-    if 'linux' in full and ('x86-64' in full or 'x64' in full or 'x86_64' in full):return 100
-    if 'linux' in full:return 80
-    if 'universal' in full:return 40
-    return 20
+NET = 'https://github.com/official-pikafish/Networks/releases/download/master-net/pikafish.nnue'
+OUT = pathlib.Path('/opt/pikafish')
+HEAD = {'User-Agent':'pikafish-cloud-render-source-builder'}
+def download(url, dest):
+    req=urllib.request.Request(url,headers=HEAD)
+    with urllib.request.urlopen(req,timeout=180) as r,open(dest,'wb') as f:
+        shutil.copyfileobj(r,f)
 def run():
-    release=json.loads(fetch(API)); assets=release.get('assets',[])
-    print('Release:',release.get('tag_name'),'Assets:',*[a['name'] for a in assets], sep='\n',flush=True)
-    if not assets:raise RuntimeError('Release without downloadable assets')
     with tempfile.TemporaryDirectory() as tmp:
-        root=pathlib.Path(tmp)
-        # Latest release may bundle all platforms in a single archive. Inspect its content.
-        candidates=sorted(assets,key=lambda a:(0 if a['name'].lower().endswith(('.zip','.tar.gz','.tgz')) else 1, 0 if 'linux' in a['name'].lower() else 1))
-        for asset in candidates:
-            nm=asset['name'];low=nm.lower()
-            if low.endswith(('.exe','.dmg','.apk')):continue
-            if not (low.endswith(('.zip','.tgz','.tar.gz','.tar.xz','.nnue')) or ('pikafish' in low and ('linux' in low or 'x86-64' in low))):continue
-            print('Downloading:',nm,flush=True)
-            folder=root/('asset_'+str(len(list(root.iterdir()))));folder.mkdir()
-            unpack(fetch(asset['browser_download_url']),nm,folder)
-        files=[p for p in root.rglob('*') if p.is_file()]
-        bins=sorted((p for p in files if engine_priority(p)>0),key=engine_priority,reverse=True)
-        nets=[p for p in files if p.suffix.lower()=='.nnue']
-        if not bins or not nets:raise RuntimeError('Unable to locate Linux x86-64 binary and NNUE in release assets: '+', '.join(a['name'] for a in assets))
-        # Prefer a network next to the executable if present.
-        exe=bins[0]; net=min(nets,key=lambda p:0 if p.parent==exe.parent else 1)
-        DEST.mkdir(parents=True,exist_ok=True)
-        shutil.copyfile(exe,DEST/'pikafish');shutil.copyfile(net,DEST/'pikafish.nnue')
-        os.chmod(DEST/'pikafish',0o755)
-        print('Installed binary:',exe,'NNUE:',net,'size:',(DEST/'pikafish.nnue').stat().st_size,flush=True)
+        tmp=pathlib.Path(tmp)
+        rel=tmp/'release.json';download(API,rel)
+        info=json.loads(rel.read_text())
+        tag=info.get('tag_name'); print('Building official release',tag,flush=True)
+        archive=tmp/'source.tar.gz';download(info['tarball_url'],archive)
+        src_root=tmp/'src';src_root.mkdir()
+        with tarfile.open(archive,'r:gz') as tar:
+            for member in tar.getmembers():
+                parts=pathlib.PurePosixPath(member.name).parts
+                if len(parts)<2 or '..' in parts or not member.isfile():continue
+                relpath=pathlib.Path(*parts[1:])
+                if relpath.parts[0]!='src':continue
+                target=src_root/relpath;target.parent.mkdir(parents=True,exist_ok=True)
+                r=tar.extractfile(member)
+                if r:
+                    with open(target,'wb') as w:shutil.copyfileobj(r,w)
+        builddir=src_root/'src'
+        if not (builddir/'Makefile').exists():raise RuntimeError('Missing official src/Makefile')
+        print('Compiling native x86-64 baseline build',flush=True)
+        subprocess.run(['make','-j2','build','ARCH=x86-64'],cwd=builddir,check=True)
+        exe=builddir/'pikafish'
+        if not exe.is_file():raise RuntimeError('Pikafish build output missing')
+        OUT.mkdir(parents=True,exist_ok=True)
+        shutil.copy2(exe,OUT/'pikafish');os.chmod(OUT/'pikafish',0o755)
+        print('Downloading official NNUE network',flush=True)
+        download(NET,OUT/'pikafish.nnue')
+        if (OUT/'pikafish.nnue').stat().st_size<1_000_000:raise RuntimeError('NNUE download unusually small')
+        # Engine version and network compatibility must be tested after deployment.
+        print('Installed source build and network; verify UCI startup and go movetime in Render',flush=True)
 if __name__=='__main__':run()
