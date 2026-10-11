@@ -61,9 +61,10 @@ def run():
         print('Compiler versions:', flush=True)
         for compiler in ('clang++', 'g++'):
             subprocess.run([compiler, '--version'], check=False)
-        # Universal is the architecture used by current upstream CI. Fallbacks help
-        # when a release tag has a different Makefile/compiler requirement.
-        attempts = [('x86-64-universal', 'clang'), ('x86-64', 'clang'), ('x86-64', 'gcc')]
+        # Avoid x86-64-universal: older Clang versions reject the vaes / avxvnni
+        # builtin CPU feature checks. Start with the most portable GCC target.
+        # Keep a non-universal Clang fallback for upstream build variations.
+        attempts = [('x86-64', 'gcc'), ('x86-64', 'clang')]
         executable = builddir / 'pikafish'
         for arch, compiler in attempts:
             subprocess.run(['make', 'clean'], cwd=builddir, check=False,

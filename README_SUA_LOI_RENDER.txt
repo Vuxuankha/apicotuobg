@@ -1,15 +1,11 @@
-SUA LOI PIKAFISH RENDER - 2026-10-11
+PIKAFISH RENDER - SUA LOI COMPILER (11/10/2026)
 
-1. Giai nen ZIP. Upload NOI DUNG thu muc api/ len GitHub tai api/; khong upload ZIP nguyen.
-2. Render Settings: Root Directory = api ; Dockerfile Path = ./Dockerfile ; Runtime = Docker.
-3. Commit GitHub moi, Render > Manual Deploy > Deploy latest commit.
-4. Xem log: "BUILD COMMAND". Neu fail, log nay in ra loi bien dich goc (18,000 ky tu cuoi) thay vi chi exit code 2.
-5. Sau khi Live: mo https://TEN-DICH-VU.onrender.com/api/health va thu POST /api/analyze.
+Loi cu: invalid cpu feature string for builtin (vaes, avxvnni) khi build x86-64-universal voi Clang.
+Thay doi: build ARCH=x86-64 COMP=gcc truoc; fallback ARCH=x86-64 COMP=clang. Khong dung x86-64-universal.
 
-DA SUA:
-- Dung Clang va ARCH=x86-64-universal (theo CI upstream) truoc.
-- Thu tiep Clang x86-64 / GCC x86-64 neu cau hinh truoc loi.
-- Giu ca cay ma nguon goc khi giai nen (khong chi thu muc src).
-- Hien thi loi gcc/clang/Makefile trong logs.
+1. Giai nen ZIP. Upload tat ca tep trong api/ len thu muc api/ cua repository GitHub (ghi de cac tep cu).
+2. Render: Runtime Docker; Root Directory api; Dockerfile Path ./Dockerfile.
+3. Commit thay doi; Manual Deploy -> Deploy latest commit.
+4. Neu build van fail, xem BUILD COMMAND va compiler error trong Render Logs.
 
-CHUA XAC NHAN: Docker build tren Render va kha nang mang NNUE tuong thich, do moi truong chua download duoc nguon GitHub. Goi Render Free 512MB RAM co the khong du de chay engine trong thoi gian ngan.
+Da kiem tra cu phap Python va Node.js; CHUA test Docker build tren Render va chua cam ket engine chay thanh cong.
