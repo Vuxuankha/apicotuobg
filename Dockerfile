@@ -1,6 +1,6 @@
 # Build native Pikafish from the official source release instead of guessing asset filenames.
 FROM debian:bookworm-slim AS engine
-RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates python3 make g++ git curl && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates python3 make g++ clang llvm lld git curl && rm -rf /var/lib/apt/lists/*
 COPY install_engine.py /tmp/install_engine.py
 RUN python3 /tmp/install_engine.py
 
